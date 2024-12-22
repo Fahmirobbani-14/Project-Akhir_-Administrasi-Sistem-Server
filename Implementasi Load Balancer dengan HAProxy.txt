@@ -1,0 +1,98 @@
+Persiapan Infrastruktur
+Buat 4 Instance EC2 di AWS dengan konfigurasi berikut:
+Instance:
+Web Server 1
+Web Server 2
+Load Balancer
+Database Server
+AMI: Ubuntu Server 20.04 LTS.
+Instance Type: t2.micro (free tier eligible).
+Storage: 10 GB (default).
+Security Group:
+Port 80 (HTTP) – Source: 0.0.0.0/0
+Port 22 (SSH) – Source: 0.0.0.0/0
+Port 3306 (MySQL/Aurora) – Source: 0.0.0.0/0
+
+A. Konfigurasi Database:
+1. Install MariaDB di Database Server
+sudo apt update
+sudo apt install mariadb-server -y
+sudo systemctl start mariadb
+sudo systemctl enable MariaDB
+
+2. Setup database dan user
+Login ke MariaDB:
+sudo MySQL
+
+Buat database, user, dan beri izin:
+CREATE DATABASE wordpress;
+CREATE USER 'wordpressuser'@'%' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON wordpress.* TO 'wordpressuser'@'%';
+FLUSH PRIVILEGES;
+EXIT;
+
+3. Konfigurasi akses jarak jauh
+Edit file /etc/mysql/mariadb.conf.d/50-server.cnf, ubah bind-address ke 0.0.0.0:
+sudo nano /etc/mysql/mariadb.conf.d/50-server.cnf
+
+Restart MariaDB:
+sudo systemctl restart mariadb
+
+
+B. Konfigurasi Web Server:
+1. Install Apache, PHP, dan WordPress di Web Server 1 & 2
+sudo apt update
+sudo apt install apache2 php php-mysql wget unzip -y
+cd /var/www/html
+sudo wget https://wordpress.org/latest.zip
+sudo unzip latest.zip
+sudo mv wordpress/* .
+sudo chown -R www-data:www-data /var/www/html
+sudo chmod -R 755 /var/www/html
+
+2. Konfigurasi koneksi database WordPress
+
+Edit file wp-config.php:
+sudo nano /var/www/html/wp-config.php
+
+Isi dengan informasi database:
+define('DB_NAME', 'wordpress');
+define('DB_USER', 'wordpressuser');
+define('DB_PASSWORD', 'password');
+define('DB_HOST', 'IP_DATABASE_SERVER');
+
+3. Restart Apache 
+sudo systemctl restart apache2
+
+
+C. Konfigurasi Load Balancer
+1. Install HAProxy di Load Balancer
+sudo apt update
+sudo apt install haproxy -y
+
+2. Konfigurasi HAProxy
+Edit file /etc/haproxy/haproxy.cfg: 
+sudo nano /etc/haproxy/haproxy.cfg
+
+Tambahkan konfigurasi :
+frontend http_front
+    bind *:80
+    default_backend web_servers
+
+backend web_servers
+    balance roundrobin
+    server web1 IP_WEBSERVER1:80 check
+    server web2 IP_WEBSERVER2:80 check
+
+Restart HAProxy:
+sudo systemctl restart haproxy
+
+D. Pengujian 
+1. Uji koneksi database dari Web Server 1 & 2:
+mysql -u wordpressuser -h IP_DATABASE_SERVER -p
+
+2. Pengujian Failover Load Balancer:
+sudo systemctl stop apache2
+
+3. Uji apabila kedua Web Server dimatikan:
+Shutdown kedua Web Server dan pastikan website tidak bisa diakses.
